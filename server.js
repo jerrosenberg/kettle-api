@@ -3,7 +3,20 @@
 var express = require('express');
 var net = require('net');
 
-connectToKettle('bree', 2000, function (result) {
+var kettleHost = process.env['KETTLEHOST'];
+var kettlePort = process.env['KETTLEPORT'] || 2000;
+
+var listenPort = process.env['LISTENPORT'] || 8080;
+
+if (!host) {
+  console.log('Host not specified. KETTLEHOST environment variable missing.');
+  process.exit(1);
+  return;
+}
+
+console.log('Connecting to kettle at ' + kettleHost + ':' + kettlePort);
+
+connectToKettle(kettleHost, kettlePort, function (result) {
   console.log('Success: ' + result.success);
   console.log('Socket: ' + result.socket);
   
@@ -33,8 +46,8 @@ connectToKettle('bree', 2000, function (result) {
     res.json({ success: true });
   });
 
-  app.listen(8080);
-  console.log('Started listening');
+  app.listen(listenPort);
+  console.log('Listening on port ' + listenPort);
 });
 
 function connectToKettle(ip, port, callback) {
