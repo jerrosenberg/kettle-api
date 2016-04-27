@@ -8,8 +8,8 @@ var kettlePort = process.env['KETTLEPORT'] || 2000;
 
 var listenPort = process.env['LISTENPORT'] || 8080;
 
-if (!host) {
-  console.log('Host not specified. KETTLEHOST environment variable missing.');
+if (!kettleHost) {
+  console.log('Kettle Host not specified. KETTLEHOST environment variable missing.');
   process.exit(1);
   return;
 }
