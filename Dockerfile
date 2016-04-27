@@ -4,6 +4,6 @@ RUN mkdir -p /usr/src/kettle-api
 WORKDIR /usr/src/kettle-api
 COPY . /usr/src/kettle-api
 
-EXPOSE 8080
+EXPOSE $LISTENPORT
 CMD [ "npm", "start" ]
 
