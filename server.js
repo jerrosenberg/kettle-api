@@ -3,69 +3,46 @@
 var express = require('express');
 var net = require('net');
 
-var kettleHost = process.env['KETTLEHOST'];
-var kettlePort = process.env['KETTLEPORT'] || 2000;
+var kettleHostInfo = {
+  host: process.env['KETTLEHOST'],
+  port: process.env['KETTLEPORT'] || 2000
+};
 
 var listenPort = process.env['LISTENPORT'] || 8080;
 
-if (!kettleHost) {
-  console.log('Kettle Host not specified. KETTLEHOST environment variable missing.');
+if (!kettleHostInfo.host) {
+  console.log('KETTLEHOST not set.');
   process.exit(1);
   return;
 }
 
-console.log('Connecting to kettle at ' + kettleHost + ':' + kettlePort);
 
-connectToKettle(kettleHost, kettlePort, function (result) {
-  console.log('Success: ' + result.success);
-  console.log('Socket: ' + result.socket);
-  
-  if (!result.success) {
-    process.exit(1);
-    return;
-  }
-  
-  var app = express();
-  var socket = result.socket;
-
-  app.post('/boil', function (req, res) {
-    console.log('Set boil');
-    socket.write('set sys output 0x4\n');
-    res.json({ success: true });
-  });
-
-  app.post('/off', function (req, res) {
-    console.log('Set off');
-    socket.write('set sys output 0x0\n');
-    res.json({ success: true });
-  });
-
-  app.post('/keepwarm', function (req, res) {
-    console.log('Set keep warm');
-    socket.write('set sys output 0x8\n');
-    res.json({ success: true });
-  });
-
-  app.listen(listenPort);
-  console.log('Listening on port ' + listenPort);
-});
-
-function connectToKettle(ip, port, callback) {
+// TODO: Extract into module
+function connectToKettle(kettleHostInfo, callback) {
+  var invokedCallback = false;
   var socket = new net.Socket()
   socket.setEncoding('ascii')
   socket.setNoDelay()
 
-  socket.on('timeout', function() {
+  socket.once('timeout', function() {
     console.log('Socket timeout');
     callbackError();
   });
 
-  socket.on('error', function(err) {
+  socket.once('error', function(err) {
     console.log('Socket error: ' + err.message);
     callbackError();
   });
+  
+  socket.once('close', function() {
+    console.log('Socket closed.');
+    callbackError(); // Note: Will not invoke error if result already reported.
+    socket = null;
+  });
 
-  socket.connect(port, ip, function() {
+  console.log('Connecting to kettle at ' + kettleHostInfo.host + ':' + kettleHostInfo.port);
+  
+  socket.connect(kettleHostInfo.port, kettleHostInfo.host, function() {
     var timeoutHandle = setTimeout(function () {
       if (!found) {
         console.log('Handshake timeout');
@@ -78,7 +55,7 @@ function connectToKettle(ip, port, callback) {
       if (data === 'HELLOAPP') {
         console.log('Received HELLOAPP');
         clearTimeout(timeoutHandle);
-        callbackSuccess();        
+        callbackSuccess();
       }
     }));
     
@@ -88,16 +65,29 @@ function connectToKettle(ip, port, callback) {
   });
   
   function callbackError() {
-    callback({
+    invokeCallbackOnce({
       success: false
     });
   }
   
   function callbackSuccess() {
-    callback({
+    invokeCallbackOnce({
       success: true,
-      socket: socket
+      socket: socket,
+      done: function () {
+        socket.end();
+        socket = null;
+      }
     })
+  }
+  
+  function invokeCallbackOnce(data) {
+    if (invokedCallback) {
+      return;
+    }
+    
+    invokedCallback = true;
+    callback(data);
   }
 }
 
@@ -116,3 +106,46 @@ function newLineStream(callback) {
     buffer = buffer.substr(offset);
   });
 }
+
+
+var app = express();
+
+app.post('/boil', function (req, res) {
+  console.log('Set boil');
+  connectToKettle(kettleHostInfo, function (result) {
+    if (result.success) {
+      result.socket.write('set sys output 0x4\n');
+      result.done();
+    }
+    
+    res.json({ success: result.success });
+  });
+});
+
+app.post('/off', function (req, res) {
+  console.log('Set off');
+  connectToKettle(kettleHostInfo, function (result) {
+    if (result.success) {
+      result.socket.write('set sys output 0x0\n');
+      result.done();
+    }
+    
+    res.json({ success: result.success });
+  });
+});
+
+app.post('/keepwarm', function (req, res) {
+  console.log('Set keep warm');
+  connectToKettle(kettleHostInfo, function (result) {
+    if (result.success) {
+      result.socket.write('set sys output 0x8\n');
+      result.done();
+    }
+    
+    res.json({ success: result.success });
+  });
+});
+
+app.listen(listenPort);
+console.log('Listening on port ' + listenPort);
+
